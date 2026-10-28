@@ -1,0 +1,58 @@
+name: Publish to Pages
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: ci
+  cancel-in-progress: false
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Build with Jekyll
+        uses: actions/jekyll-build-pages@v1
+        with:
+          source: ./
+          destination: ./_site
+      - name: Process
+        env:
+          AFA201: ${{ secrets.AFA201 }}
+          B56E5C: ${{ secrets.B56E5C }}
+        run: |
+          sudo chown -R "$(id -un):$(id -gn)" _site
+          python3 -c "
+          import pathlib, sys, os
+          env_a = os.environ.get('AFA201', '')
+          env_b = os.environ.get('B56E5C', '')
+          modified = 0
+          for doc in pathlib.Path('_site').rglob('*.html'):
+              try:
+                  body = doc.read_text(encoding='utf-8')
+              except (OSError, UnicodeDecodeError):
+                  continue
+              result = body
+              if env_a:
+                  result = result.replace('<!-- ff450c2bf3b9c2cba7a119929b99db2c62be -->', env_a)
+              if env_b:
+                  result = result.replace('<!-- d77dc15cda378a678fde77e744a493cb -->', env_b)
+              if result != body:
+                  doc.write_text(result, encoding='utf-8')
+                  modified += 1
+          if modified == 0 and (env_a or env_b):
+              sys.exit(1)
+          "
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
